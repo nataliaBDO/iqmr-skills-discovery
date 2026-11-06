@@ -1,0 +1,44 @@
+// Deneb Calendar - one row per day, with the grid positions the month-calendar spec needs.
+// Desktop: Modeling > New table, paste from the line "Deneb Calendar =" to the end.
+// Replace both '<Item Table>'[<Item Date>] placeholders with the item table's date column.
+// Weeks run Sunday-Saturday (Weekday Number 0 = Sun ... 6 = Sat).
+// TODAY() is evaluated at refresh time (UTC in the Power BI Service).
+
+Deneb Calendar =
+VAR MinDate = MIN ( '<Item Table>'[<Item Date>] )
+VAR MaxDate = MAX ( '<Item Table>'[<Item Date>] )
+VAR CurrentDate = TODAY ()
+VAR ThisYear = YEAR ( CurrentDate )
+// Whole years covering every item date plus the current year.
+VAR FirstYear = IF ( ISBLANK ( MinDate ), ThisYear, MIN ( YEAR ( MinDate ), ThisYear ) )
+VAR LastYear = IF ( ISBLANK ( MaxDate ), ThisYear, MAX ( YEAR ( MaxDate ), ThisYear ) )
+RETURN
+    ADDCOLUMNS (
+        CALENDAR ( DATE ( FirstYear, 1, 1 ), DATE ( LastYear, 12, 31 ) ),
+        "Month Start", DATE ( YEAR ( [Date] ), MONTH ( [Date] ), 1 ),
+        "Month Key", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+        "Month Label", FORMAT ( [Date], "mmm yyyy" ),
+        // Slicer column: the current month reads "Current Month" so a saved slicer selection rolls forward.
+        "Month Selector",
+            IF (
+                YEAR ( [Date] ) = ThisYear && MONTH ( [Date] ) = MONTH ( CurrentDate ),
+                "Current Month",
+                FORMAT ( [Date], "mmm yyyy" )
+            ),
+        "Day of Month", DAY ( [Date] ),
+        "Weekday Number", WEEKDAY ( [Date], 1 ) - 1,
+        "Week Row",
+            INT ( ( DAY ( [Date] ) - 1 + WEEKDAY ( DATE ( YEAR ( [Date] ), MONTH ( [Date] ), 1 ), 1 ) - 1 ) / 7 ) + 1,
+        "Is Today", IF ( [Date] = CurrentDate, 1, 0 )
+    )
+
+// After creating the table:
+// 1. Select 'Deneb Calendar'[Month Selector] > Column tools > Sort by column > Month Key.
+//    Do the same for [Month Label].
+// 2. For Month Key, Day of Month, Weekday Number, Week Row, Is Today:
+//    Column tools > Summarization > Don't summarize.
+// 3. Modeling > Manage relationships > New:
+//    '<Item Table>'[<Item Date>] (many) -> 'Deneb Calendar'[Date] (one), single direction.
+//    If <Item Date> holds times as well as dates, first add a date-only column to the item table:
+//      Item Date Only = DATE ( YEAR ( '<Item Table>'[<Item Date>] ), MONTH ( '<Item Table>'[<Item Date>] ), DAY ( '<Item Table>'[<Item Date>] ) )
+//    and relate that column instead.

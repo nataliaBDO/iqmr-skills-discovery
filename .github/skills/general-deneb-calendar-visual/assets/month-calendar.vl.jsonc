@@ -1,0 +1,598 @@
+// =====================================================================================
+// MONTH CALENDAR - Deneb (Vega-Lite) specification
+// =====================================================================================
+// Draws a Sun-Sat month grid and places one card per item on its date. Card colour =
+// item category (optional); a warning icon marks flagged items (optional). Days with
+// more items than fit show "+N more"; clicking a day opens a panel listing all items.
+//
+// The spec uses fixed ROLE names, not report field names. Rename each field in the
+// Deneb Values well ("Rename for this visual") to its role name and the spec works
+// unchanged with any report.
+//
+// -------------------------------------------------------------------------------------
+// FIELD ROLES (Values well) - rename each field to exactly this name
+// -------------------------------------------------------------------------------------
+//   From the 'Deneb Calendar' table (assets/calendar-table.dax) - already named:
+//     Date             -> right-click > "Show items with no data"
+//     Month Key        yyyymm
+//     Week Row         1-6
+//     Weekday Number   0 = Sun ... 6 = Sat
+//     Day of Month     1-31
+//     Is Today         1/0
+//   From the item table:
+//     Item Key         required-ish: unique ID, keeps two same-named items apart
+//     Item Label       required: text on the card
+//     Item Category    optional: drives card colour (see CATEGORY COLOURS)
+//     Item Flag        optional: 1 (or TRUE) shows the warning icon
+//   All numeric fields: "Don't summarize".
+//
+// -------------------------------------------------------------------------------------
+// SETUP (Power BI Desktop)
+// -------------------------------------------------------------------------------------
+// 1. Add a Deneb visual; add the fields above to Values and rename them to the roles.
+// 2. Edit > Create new > Vega-Lite > Empty, paste this whole file, Apply.
+// 3. Settings pane:
+//    - Interactivity: Tooltips on; "Expose cross-filtering values for dataset rows" on.
+//    - Continuous view: "Enable patching for hosted datasets" on (keeps the day panel
+//      open when the visual's own click cross-filters the page).
+// 4. Add a single-select slicer on 'Deneb Calendar'[Month Selector] set to
+//    "Current Month". The grid always shows ONE month.
+//
+// -------------------------------------------------------------------------------------
+// INTERACTION
+// -------------------------------------------------------------------------------------
+//   Hover a card            -> tooltip.
+//   Click a card            -> cross-filter the page to that item.
+//   Click a day / "+N more" -> panel listing every item that day.
+//   Click outside the panel -> panel closes.
+//
+// -------------------------------------------------------------------------------------
+// HOW THE LAYOUT WORKS
+// -------------------------------------------------------------------------------------
+// Both axes use grid units, so the month always fits the visual:
+//   x: 0 -> 7   one unit per weekday column (0 = Sunday ... 6 = Saturday)
+//   y: 0 -> N   one unit per week row (N = 4-6), reversed so row 1 is at the top.
+// Each cell is a 1 x 1 box with top-left corner (Weekday Number, Week Row - 1).
+// Positions inside a cell are fractions of that box (see LAYOUT PARAMETERS).
+// Days outside the month have no rows, so they show config.view.fill.
+//
+// -------------------------------------------------------------------------------------
+// THEME TOKENS - replace each placeholder hex everywhere it appears with the user's
+// CVI colour. Every hex below is used for one role only, so find/replace is safe.
+// -------------------------------------------------------------------------------------
+//   #FFFFFF  surface: day cells, day panel, legend background
+//   #F5F5F5  out-of-month cells
+//   #E1DFDD  lines: grid lines, outer border, legend border
+//   #EFF6FC  today's cell fill
+//   #0F6CBD  accent: today's day number, open-day outline, "+N more"
+//   #252423  strong text: title, card text, panel title, legend title
+//   #323130  body text: day numbers, legend labels
+//   #605E5C  muted text: weekday header
+//   #8A8886  panel border, "Click outside to close"
+//   #A19F9D  outline on cards with no category
+//   #D13438  flag icon
+//   Segoe UI font (config.font)
+//   Category colours: CATEGORY COLOURS in LAYER 3.
+// =====================================================================================
+{
+  // Deneb always supplies the Power BI data under the name "dataset".
+  "data": {"name": "dataset"},
+
+  // -----------------------------------------------------------------------------------
+  // LAYOUT PARAMETERS - (fraction) = share of one calendar cell's height.
+  // -----------------------------------------------------------------------------------
+  "params": [
+    // Max cards drawn per day; extra items are summarised as "+N more".
+    {"name": "pMaxCards", "value": 3},
+    // (fraction) Strip at the top of each cell for the day number and "+N more".
+    {"name": "pHeaderH", "value": 0.22},
+    // (fraction) Empty margin below the last card.
+    {"name": "pMoreH", "value": 0.03},
+    // (fraction) Vertical gap between stacked cards.
+    {"name": "pCardGap", "value": 0.02},
+    // (fraction of cell width) Left/right inset of cards inside the cell.
+    {"name": "pPadX", "value": 0.04},
+    // Opacity of the category colour used as the card background.
+    {"name": "pCardTint", "value": 0.2},
+    // Day panel: height of one item row in pixels, and panel width in day columns.
+    {"name": "pPanelRowPx", "value": 22},
+    {"name": "pPanelCols", "value": 2.6},
+    // Words used in the day panel title, e.g. "Tue 10 Nov · 2 items".
+    {"name": "pItemNoun", "value": "item"},
+    {"name": "pItemNounPlural", "value": "items"},
+    // Month shown in the grid (e.g. 202611): earliest Month Key in the data. Drives the title.
+    {"name": "pShownMonth", "expr": "extent(pluck(data('dataset'), 'Month Key'))[0]"}
+  ],
+
+  // -----------------------------------------------------------------------------------
+  // SHARED TRANSFORMS - applied to every layer below.
+  // -----------------------------------------------------------------------------------
+  "transform": [
+    // Items with no date arrive with a blank Date - they can't be placed on the grid.
+    {"filter": "isValid(datum['Date']) && isValid(datum['Week Row'])"},
+
+    // Safety net: a cleared or multi-select month slicer would stack several months on
+    // the same cells. Keep only the earliest month present.
+    {"joinaggregate": [{"op": "min", "field": "Month Key", "as": "shownMonthKey"}]},
+    {"filter": "datum['Month Key'] === datum.shownMonthKey"},
+
+    // Number of week rows in this month (4-6).
+    {"joinaggregate": [{"op": "max", "field": "Week Row", "as": "weekRows"}]},
+
+    // Empty days ("Show items with no data") have a blank Item Label.
+    {"calculate": "isValid(datum['Item Label']) && datum['Item Label'] !== ''", "as": "hasItem"},
+    // Missing or blank Item Category => "No category" (must match the CATEGORY COLOURS domain).
+    {"calculate": "isValid(datum['Item Category']) && datum['Item Category'] !== ''", "as": "hasCategory"},
+    {"calculate": "datum.hasCategory ? datum['Item Category'] : 'No category'", "as": "categoryLabel"},
+    {"calculate": "datum['Item Flag'] === 1 || datum['Item Flag'] === true", "as": "isFlagged"},
+    // Order of items within a day (cards, "+N more" and panel all use it).
+    // Flagged first instead: "(datum.isFlagged ? '0' : '1') + datum['Item Label']"
+    {"calculate": "datum['Item Label']", "as": "sortKey"}
+  ],
+
+  "layer": [
+    // =================================================================================
+    // LAYER 1 - DAY CELLS (background + day number)
+    // Collapses to one row per day. Owns the x/y scales.
+    // Clicking a cell opens the day panel (LAYER 5).
+    // =================================================================================
+    {
+      "transform": [
+        {
+          "aggregate": [{"op": "count", "as": "rowsOnDay"}],
+          "groupby": ["Week Row", "Weekday Number", "Day of Month", "Is Today"]
+        },
+        {"calculate": "datum['Weekday Number']", "as": "cellLeft"},
+        {"calculate": "datum['Weekday Number'] + 1", "as": "cellRight"},
+        {"calculate": "datum['Week Row'] - 1", "as": "cellTop"},
+        {"calculate": "datum['Week Row']", "as": "cellBottom"},
+        // Marks carrying opensPanel = true open the day panel when clicked.
+        {"calculate": "true", "as": "opensPanel"}
+      ],
+      "layer": [
+        {
+          "mark": {"type": "rect", "cursor": "pointer", "strokeWidth": 2},
+          // Which day's panel is open: set by a click on any opensPanel mark, cleared
+          // by a click anywhere else.
+          "params": [
+            {
+              "name": "expandedDay",
+              "select": {
+                "type": "point",
+                "fields": ["Week Row", "Weekday Number"],
+                "on": "click[event.item && event.item.datum && event.item.datum.opensPanel]",
+                "clear": "click[!(event.item && event.item.datum && event.item.datum.opensPanel)]"
+              }
+            }
+          ],
+          "encoding": {
+            "x": {
+              "field": "cellLeft",
+              "type": "quantitative",
+              "scale": {"domain": [0, 7], "nice": false, "zero": false},
+              "axis": null
+            },
+            "x2": {"field": "cellRight"},
+            "y": {
+              "field": "cellTop",
+              "type": "quantitative",
+              "scale": {"reverse": true, "zero": true, "nice": false},
+              "axis": null
+            },
+            "y2": {"field": "cellBottom"},
+            "fill": {
+              "condition": {"test": "datum['Is Today'] === 1", "value": "#EFF6FC"},
+              "value": "#FFFFFF"
+            },
+            "stroke": {
+              "condition": {"param": "expandedDay", "empty": false, "value": "#0F6CBD"},
+              "value": "transparent"
+            }
+          }
+        },
+        {
+          // Day number, top-left of the cell.
+          "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 6, "dy": 5, "fontSize": 13},
+          "encoding": {
+            "x": {"field": "cellLeft", "type": "quantitative", "axis": null},
+            "y": {"field": "cellTop", "type": "quantitative", "axis": null},
+            "text": {"field": "Day of Month"},
+            "color": {
+              "condition": {"test": "datum['Is Today'] === 1", "value": "#0F6CBD"},
+              "value": "#323130"
+            }
+          }
+        }
+      ]
+    },
+
+    // =================================================================================
+    // LAYER 2 - GRID LINES
+    // Full-length rules so lines also cross the empty out-of-month cells.
+    // =================================================================================
+    {
+      // Vertical lines between weekday columns (x = 1 ... 6).
+      "transform": [
+        {
+          "aggregate": [{"op": "max", "field": "weekRows", "as": "weekRows"}],
+          "groupby": ["Weekday Number"]
+        },
+        {"filter": "datum['Weekday Number'] > 0"},
+        // Constant as a field: Vega-Lite can't pair a "datum" start with a field end.
+        {"calculate": "0", "as": "lineTop"}
+      ],
+      "mark": {"type": "rule", "color": "#E1DFDD"},
+      "encoding": {
+        "x": {"field": "Weekday Number", "type": "quantitative", "axis": null},
+        "y": {"field": "lineTop", "type": "quantitative", "axis": null},
+        "y2": {"field": "weekRows"}
+      }
+    },
+    {
+      // Horizontal lines between week rows (y = 1 ... N-1).
+      "transform": [
+        {"aggregate": [{"op": "count", "as": "rowsInWeek"}], "groupby": ["Week Row"]},
+        {"filter": "datum['Week Row'] > 1"},
+        {"calculate": "datum['Week Row'] - 1", "as": "lineY"},
+        {"calculate": "0", "as": "lineLeft"},
+        {"calculate": "7", "as": "lineRight"}
+      ],
+      "mark": {"type": "rule", "color": "#E1DFDD"},
+      "encoding": {
+        "x": {"field": "lineLeft", "type": "quantitative", "axis": null},
+        "x2": {"field": "lineRight"},
+        "y": {"field": "lineY", "type": "quantitative", "axis": null}
+      }
+    },
+
+    // =================================================================================
+    // WEEKDAY HEADER - Sun ... Sat above each column.
+    // A text layer, not an axis: "axis": null on the other layers would hide an axis.
+    // =================================================================================
+    {
+      "transform": [
+        {"aggregate": [{"op": "count", "as": "daysInColumn"}], "groupby": ["Weekday Number"]},
+        {"calculate": "datum['Weekday Number'] + 0.5", "as": "headerX"},
+        {"calculate": "0", "as": "headerY"},
+        {"calculate": "['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][datum['Weekday Number']]", "as": "weekdayName"}
+      ],
+      "mark": {"type": "text", "align": "center", "baseline": "bottom", "dy": -8, "fontSize": 13, "fontWeight": 600, "color": "#605E5C"},
+      "encoding": {
+        "x": {"field": "headerX", "type": "quantitative", "axis": null},
+        "y": {"field": "headerY", "type": "quantitative", "axis": null},
+        "text": {"field": "weekdayName"}
+      }
+    },
+
+    // =================================================================================
+    // LAYER 3 - ITEM CARDS
+    // Up to pMaxCards cards per day: category-tinted background + label + flag icon.
+    // =================================================================================
+    {
+      "transform": [
+        {"filter": "datum.hasItem"},
+        {
+          "window": [{"op": "row_number", "as": "slot"}],
+          "groupby": ["Week Row", "Weekday Number"],
+          "sort": [{"field": "sortKey", "order": "ascending"}, {"field": "Item Key", "order": "ascending"}]
+        },
+        // Items beyond pMaxCards are counted by LAYER 4 instead.
+        {"filter": "datum.slot <= pMaxCards"},
+
+        // Card position (grid units): the space below the header strip is shared
+        // equally between pMaxCards slots.
+        {"calculate": "(1 - pHeaderH - pMoreH) / pMaxCards", "as": "slotH"},
+        {"calculate": "datum['Week Row'] - 1 + pHeaderH + (datum.slot - 1) * datum.slotH", "as": "cardTop"},
+        {"calculate": "datum.cardTop + datum.slotH - pCardGap", "as": "cardBottom"},
+        {"calculate": "datum['Weekday Number'] + pPadX", "as": "cardLeft"},
+        {"calculate": "datum['Weekday Number'] + 1 - pPadX", "as": "cardRight"},
+        {"calculate": "(datum.cardTop + datum.cardBottom) / 2", "as": "cardMid"}
+      ],
+
+      // Inherited by every card sub-layer.
+      "encoding": {
+        // Dim cards outside the current cross-filter selection (__selected__ is added by
+        // Deneb only when cross-filtering is exposed).
+        "opacity": {
+          "condition": {"test": "datum.__selected__ === 'off'", "value": 0.3},
+          "value": 1
+        },
+        // TOOLTIP - rename titles to the report's wording and add any extra Values-well
+        // fields here. Keep in sync with the tooltip in LAYER 5.
+        "tooltip": [
+          {"field": "Item Label", "title": "Item"},
+          {"field": "categoryLabel", "title": "Category"},
+          {"field": "Date", "type": "temporal", "title": "Date", "format": "%d %b %Y"}
+        ]
+      },
+
+      "layer": [
+        {
+          // Card background, tinted with the category colour.
+          "mark": {"type": "rect", "cornerRadius": 3, "strokeWidth": 1, "fillOpacity": {"expr": "pCardTint"}},
+          "encoding": {
+            "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
+            "x2": {"field": "cardRight"},
+            "y": {"field": "cardTop", "type": "quantitative", "axis": null},
+            "y2": {"field": "cardBottom"},
+            // CATEGORY COLOURS - the only place category colours are defined; LAYER 5
+            // reuses this scale. List every Item Category value exactly as it appears in
+            // the data, plus "No category", with one CVI colour each (same order).
+            // Values missing from the domain get recycled colours.
+            // The panel dots (LAYER 5) use the same field and title, so the two merge into
+            // one legend - never put "legend": null on either.
+            "color": {
+              "field": "categoryLabel",
+              "type": "nominal",
+              "title": "Category",
+              "scale": {
+                "domain": ["Meeting", "Deadline", "Release", "Training", "No category"],
+                "range": ["#4C6A92", "#D9822B", "#5B8C5A", "#8E6C8A", "#C8C6C4"]
+              }
+            },
+            "stroke": {
+              "condition": {"test": "!datum.hasCategory", "value": "#A19F9D"},
+              "value": "transparent"
+            }
+          }
+        },
+        {
+          // Item label, cut off with "…" to fit; full text is in the tooltip.
+          "mark": {
+            "type": "text",
+            "align": "left",
+            "baseline": "middle",
+            "dx": 6,
+            "fontSize": 12,
+            "fontWeight": 600,
+            "color": "#252423",
+            "limit": {"expr": "max(width / 7 - 30, 20)"}
+          },
+          "encoding": {
+            "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
+            "y": {"field": "cardMid", "type": "quantitative", "axis": null},
+            "text": {"field": "Item Label"}
+          }
+        },
+        {
+          // Flag icon at the right of the card.
+          "transform": [{"filter": "datum.isFlagged"}],
+          "mark": {"type": "text", "text": "\u26A0", "align": "right", "baseline": "middle", "dx": -4, "fontSize": 12, "color": "#D13438"},
+          "encoding": {
+            "x": {"field": "cardRight", "type": "quantitative", "axis": null},
+            "y": {"field": "cardMid", "type": "quantitative", "axis": null}
+          }
+        }
+      ]
+    },
+
+    // =================================================================================
+    // LAYER 4 - "+N MORE"
+    // Top-right of a day cell when it has more items than pMaxCards.
+    // Hover = names of the hidden items; click = open the day panel.
+    // =================================================================================
+    {
+      "transform": [
+        {"filter": "datum.hasItem"},
+        // Same numbering as LAYER 3, so slot > pMaxCards = exactly the items without a card.
+        {
+          "window": [{"op": "row_number", "as": "slot"}],
+          "groupby": ["Week Row", "Weekday Number"],
+          "sort": [{"field": "sortKey", "order": "ascending"}, {"field": "Item Key", "order": "ascending"}]
+        },
+        {"filter": "datum.slot > pMaxCards"},
+        {
+          "aggregate": [
+            {"op": "count", "as": "hiddenCount"},
+            {"op": "values", "as": "hiddenRows"}
+          ],
+          "groupby": ["Week Row", "Weekday Number"]
+        },
+        {"calculate": "'+' + datum.hiddenCount + ' more'", "as": "moreLabel"},
+        {"calculate": "join(pluck(datum.hiddenRows, 'Item Label'), ', ')", "as": "hiddenNames"},
+        {"calculate": "datum['Weekday Number'] + 1 - pPadX", "as": "moreX"},
+        {"calculate": "datum['Week Row'] - 1", "as": "moreY"},
+        {"calculate": "true", "as": "opensPanel"}
+      ],
+      "mark": {
+        "type": "text",
+        "align": "right",
+        "baseline": "top",
+        "dy": 6,
+        "fontSize": 12,
+        "fontWeight": 600,
+        "color": "#0F6CBD",
+        "cursor": "pointer"
+      },
+      "encoding": {
+        "x": {"field": "moreX", "type": "quantitative", "axis": null},
+        "y": {"field": "moreY", "type": "quantitative", "axis": null},
+        "text": {"field": "moreLabel"},
+        "tooltip": [{"field": "hiddenNames", "title": "Also on this day"}]
+      }
+    },
+
+    // =================================================================================
+    // LAYER 5 - DAY PANEL
+    // Drawn over the grid for the day in expandedDay; lists every item that day.
+    // Row height is in pixels (pPanelRowPx), converted to grid units.
+    // =================================================================================
+    {
+      "transform": [
+        {"filter": "datum.hasItem"},
+        {"filter": {"param": "expandedDay", "empty": false}},
+        {
+          "window": [{"op": "row_number", "as": "panelRow"}],
+          "sort": [{"field": "sortKey", "order": "ascending"}, {"field": "Item Key", "order": "ascending"}]
+        },
+        {"joinaggregate": [{"op": "count", "as": "dayCount"}]},
+
+        // One week row is (height / weekRows) px tall.
+        {"calculate": "pPanelRowPx * datum.weekRows / height", "as": "rowU"},
+        // Title (~1.4 rows) + one row per item + close hint (~1.2 rows).
+        {"calculate": "(datum.dayCount + 2.6) * datum.rowU", "as": "panelH"},
+        // Open at the clicked day, shifted left/up if it would overflow the grid.
+        {"calculate": "clamp(datum['Weekday Number'] + 0.05, 0.05, 7 - pPanelCols - 0.05)", "as": "panelLeft"},
+        {"calculate": "datum.panelLeft + pPanelCols", "as": "panelRight"},
+        {"calculate": "clamp(datum['Week Row'] - 1 + pHeaderH, 0.05, max(datum.weekRows - datum.panelH - 0.05, 0.05))", "as": "panelTop"},
+        {"calculate": "datum.panelTop + datum.panelH", "as": "panelBottom"},
+        {"calculate": "datum.panelTop + (datum.panelRow + 0.9) * datum.rowU", "as": "rowY"},
+        {
+          "calculate": "timeFormat(datum['Date'], '%a %d %b') + ' \u00B7 ' + datum.dayCount + ' ' + (datum.dayCount === 1 ? pItemNoun : pItemNounPlural)",
+          "as": "panelTitle"
+        },
+        // Clicks inside the panel must keep it open.
+        {"calculate": "true", "as": "opensPanel"}
+      ],
+      "layer": [
+        {
+          // Frame, title and close hint - drawn once, from the first row.
+          "transform": [{"filter": "datum.panelRow === 1"}],
+          "layer": [
+            {
+              "mark": {"type": "rect", "fill": "#FFFFFF", "stroke": "#8A8886", "strokeWidth": 1, "cornerRadius": 4},
+              "encoding": {
+                "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
+                "x2": {"field": "panelRight"},
+                "y": {"field": "panelTop", "type": "quantitative", "axis": null},
+                "y2": {"field": "panelBottom"}
+              }
+            },
+            {
+              "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 10, "dy": 7, "fontSize": 13, "fontWeight": 700, "color": "#252423"},
+              "encoding": {
+                "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
+                "y": {"field": "panelTop", "type": "quantitative", "axis": null},
+                "text": {"field": "panelTitle"}
+              }
+            },
+            {
+              "mark": {
+                "type": "text",
+                "text": "Click outside to close",
+                "align": "left",
+                "baseline": "bottom",
+                "dx": 10,
+                "dy": -6,
+                "fontSize": 10,
+                "fontStyle": "italic",
+                "color": "#8A8886"
+              },
+              "encoding": {
+                "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
+                "y": {"field": "panelBottom", "type": "quantitative", "axis": null}
+              }
+            }
+          ]
+        },
+        {
+          // One row per item: category dot, label, flag icon.
+          "encoding": {
+            // TOOLTIP - keep in sync with LAYER 3.
+            "tooltip": [
+              {"field": "Item Label", "title": "Item"},
+              {"field": "categoryLabel", "title": "Category"},
+              {"field": "Date", "type": "temporal", "title": "Date", "format": "%d %b %Y"}
+            ]
+          },
+          "layer": [
+            {
+              "mark": {"type": "point", "filled": true, "size": 40, "xOffset": 16},
+              "encoding": {
+                "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
+                "y": {"field": "rowY", "type": "quantitative", "axis": null},
+                "color": {"field": "categoryLabel", "type": "nominal", "title": "Category"}
+              }
+            },
+            {
+              "mark": {
+                "type": "text",
+                "align": "left",
+                "baseline": "middle",
+                "dx": 27,
+                "fontSize": 12,
+                "color": "#252423",
+                "limit": {"expr": "max(pPanelCols * width / 7 - 56, 40)"}
+              },
+              "encoding": {
+                "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
+                "y": {"field": "rowY", "type": "quantitative", "axis": null},
+                "text": {"field": "Item Label"}
+              }
+            },
+            {
+              "transform": [{"filter": "datum.isFlagged"}],
+              "mark": {"type": "text", "text": "\u26A0", "align": "right", "baseline": "middle", "dx": -10, "fontSize": 12, "color": "#D13438"},
+              "encoding": {
+                "x": {"field": "panelRight", "type": "quantitative", "axis": null},
+                "y": {"field": "rowY", "type": "quantitative", "axis": null}
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    // =================================================================================
+    // LAYER 6 - FLAG LEGEND ENTRY (draws nothing on the grid)
+    // Adds a separate legend entry explaining the warning icon. Delete this layer if
+    // the report has no Item Flag. Rename "Flagged" to the report's wording.
+    // =================================================================================
+    {
+      "transform": [{"filter": "false"}, {"calculate": "'Flagged'", "as": "flagKey"}],
+      "mark": {"type": "point", "filled": true},
+      "encoding": {
+        "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
+        "y": {"field": "cardMid", "type": "quantitative", "axis": null},
+        "shape": {
+          "field": "flagKey",
+          "type": "nominal",
+          "title": null,
+          "scale": {"domain": ["Flagged"], "range": ["triangle-up"]},
+          "legend": {"symbolFillColor": "#D13438", "symbolStrokeColor": "#D13438"}
+        }
+      }
+    }
+  ],
+
+  // Month title, e.g. "November 2026 · Current Month".
+  "title": {
+    "text": {
+      "expr": "isValid(pShownMonth) ? timeFormat(datetime(floor(pShownMonth / 100), pShownMonth % 100 - 1, 1), '%B %Y') + (pShownMonth === year(now()) * 100 + month(now()) + 1 ? '  \u00B7  Current Month' : '') : ''"
+    },
+    "orient": "top",
+    "anchor": "start",
+    "fontSize": 22,
+    "fontWeight": 700,
+    "color": "#252423",
+    "offset": 10
+  },
+
+  // -----------------------------------------------------------------------------------
+  // THEME - colours are placeholders; see THEME TOKENS in the header.
+  // -----------------------------------------------------------------------------------
+  "config": {
+    "font": "Segoe UI",
+    // fill = out-of-month cells; stroke = outer border of the grid.
+    "view": {"fill": "#F5F5F5", "stroke": "#E1DFDD"},
+    "legend": {
+      "orient": "right",
+      "direction": "vertical",
+      "offset": 14,
+      "padding": 10,
+      "cornerRadius": 4,
+      "strokeColor": "#E1DFDD",
+      "fillColor": "#FFFFFF",
+      "titleFontSize": 12,
+      "titleColor": "#252423",
+      "titlePadding": 8,
+      "labelFontSize": 12,
+      "labelColor": "#323130",
+      "rowPadding": 6,
+      "symbolType": "circle",
+      "symbolSize": 120,
+      "symbolOpacity": 1,
+      "symbolStrokeWidth": 0
+    }
+  }
+}

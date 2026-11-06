@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deneb spec preview</title>
+<!-- Pinned to Deneb 2.x runtime: Vega 6.4 / Vega-Lite 6.4. -->
+<script src="https://cdn.jsdelivr.net/npm/vega@6.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-lite@6.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/vega-embed@7"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px "Segoe UI", system-ui, sans-serif; color: #252423; background: #F3F2F1; }
+  header { display: flex; align-items: baseline; gap: 12px; padding: 10px 16px; background: #252423; color: #fff; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header small { color: #C8C6C4; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 16px; background: #fff; border-bottom: 1px solid #E1DFDD; }
+  .controls label { display: flex; align-items: center; gap: 6px; }
+  .controls input[type=number] { width: 70px; }
+  button { padding: 5px 14px; border: 0; border-radius: 3px; background: #0F6CBD; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  button:hover { background: #115EA3; }
+  .editors { display: grid; grid-template-columns: 3fr 2fr; gap: 10px; padding: 10px 16px 0; }
+  .editors.hidden { display: none; }
+  .editors label { font-weight: 600; }
+  textarea { width: 100%; height: 260px; margin-top: 4px; font: 12px Consolas, monospace; border: 1px solid #C8C6C4; border-radius: 3px; padding: 6px; resize: vertical; white-space: pre; }
+  #status { padding: 8px 16px 0; font-weight: 600; }
+  #status.ok { color: #107C10; }
+  #status.err { color: #A4262C; }
+  #log { margin: 6px 16px 0; padding: 0; list-style: none; font: 12px Consolas, monospace; }
+  #log li { padding: 3px 8px; margin-bottom: 2px; border-left: 3px solid; background: #fff; white-space: pre-wrap; }
+  #log li.error { border-color: #A4262C; }
+  #log li.warn { border-color: #F2A93B; }
+  #log li.info { border-color: #0F6CBD; }
+  .stage { padding: 12px 16px 24px; }
+  #frame { position: relative; background: #fff; outline: 1px dashed #A19F9D; }
+  #frame::after { content: attr(data-size); position: absolute; right: 0; bottom: -18px; font-size: 11px; color: #8A8886; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Deneb spec preview</h1>
+  <small id="versions">loading Vega...</small>
+</header>
+
+<div class="controls">
+  <label>Spec (.vl.jsonc) <input type="file" id="specFile" accept=".jsonc,.json"></label>
+  <label>Sample data (.json) <input type="file" id="dataFile" accept=".json"></label>
+  <label>Width <input type="number" id="w" value="944" min="50"></label>
+  <label>Height <input type="number" id="h" value="636" min="50"></label>
+  <label><input type="checkbox" id="showEditors" checked> Show editors</label>
+  <button id="render" title="Ctrl+Enter">Render</button>
+</div>
+
+<div class="editors" id="editors">
+  <div><label for="spec">Specification (JSONC, // comments allowed)</label><textarea id="spec" spellcheck="false"></textarea></div>
+  <div><label for="data">Sample data - JSON array of rows, exact Power BI field names</label><textarea id="data" spellcheck="false"></textarea></div>
+</div>
+
+<div id="status"></div>
+<ul id="log"></ul>
+<div class="stage"><div id="frame"><div id="view"></div></div></div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const STORE = 'deneb-preview:';
+
+  // ---------------------------------------------------------------------------------
+  // Stand-in for the report theme, used only by the pbiColor stubs below.
+  // ---------------------------------------------------------------------------------
+  const THEME = {
+    palette: ['#4C6A92', '#8FA9C8', '#2F4058', '#A19F9D', '#605E5C', '#C8C6C4', '#7A8B99', '#B4C7DC'],
+    named: {
+      min: '#DCE6F0', middle: '#8FA9C8', max: '#2F4058',
+      negative: '#D13438', bad: '#D13438', neutral: '#F2A93B', positive: '#2E9E5B', good: '#2E9E5B'
+    }
+  };
+
+  const DEFAULT_SPEC = '// Load or paste a .vl.jsonc spec, then Render.\n{\n  "data": {"name": "dataset"},\n  "mark": "bar",\n  "encoding": {\n    "y": {"field": "Category Field", "type": "nominal", "sort": "-x"},\n    "x": {"field": "Value Field", "type": "quantitative"}\n  }\n}\n';
+  const DEFAULT_DATA = '[\n  {"Category Field": "Alpha", "Value Field": 42},\n  {"Category Field": "Beta", "Value Field": 27},\n  {"Category Field": "Gamma", "Value Field": 13}\n]\n';
+
+  // ---------------------------------------------------------------------------------
+  // Deneb stubs: pbiFormat, pbiFormatAutoUnit, pbiColor, pbiColor* schemes.
+  // Approximations only - Power BI's formatter and theme are not available here.
+  // ---------------------------------------------------------------------------------
+  function decimalsOf(fmt) {
+    const frac = (fmt.split('.')[1] || '').replace(/[^0#]/g, '');
+    return frac.length;
+  }
+  function pbiFormat(value, format, options) {
+    if (value === null || value === undefined) return '';
+    const opts = (typeof format === 'object' && format) || options || {};
+    const fmt = typeof format === 'string' ? format : (opts.format || '');
+    if (value instanceof Date) return isNaN(value) ? '' : value.toLocaleDateString();
+    if (typeof value !== 'number') return String(value);
+    const pct = fmt.includes('%');
+    const dec = opts.precision !== undefined ? opts.precision : (fmt ? decimalsOf(fmt) : 2);
+    const v = pct ? value * 100 : value;
+    return v.toLocaleString(undefined, { minimumFractionDigits: fmt ? dec : 0, maximumFractionDigits: dec }) + (pct ? '%' : '');
+  }
+  function pbiFormatAutoUnit(value, format, options) {
+    if (typeof value !== 'number') return pbiFormat(value, format, options);
+    return value.toLocaleString(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+  }
+  function shadeHex(hex, shade) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m || !shade) return hex;
+    const n = parseInt(m[1], 16);
+    const target = shade > 0 ? 255 : 0;
+    const amt = Math.min(Math.abs(shade), 1);
+    const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => Math.round(c + (target - c) * amt));
+    return '#' + ch.map((c) => c.toString(16).padStart(2, '0')).join('');
+  }
+  function pbiColor(ref, shade) {
+    const base = typeof ref === 'number'
+      ? THEME.palette[((Math.floor(ref) % THEME.palette.length) + THEME.palette.length) % THEME.palette.length]
+      : THEME.named[String(ref).toLowerCase()] || THEME.palette[0];
+    return shadeHex(base, shade || 0);
+  }
+
+  function registerStubs() {
+    vega.expressionFunction('pbiFormat', pbiFormat);
+    vega.expressionFunction('pbiFormatAutoUnit', pbiFormatAutoUnit);
+    vega.expressionFunction('pbiColor', pbiColor);
+    vega.scheme('pbiColorNominal', THEME.palette);
+    vega.scheme('pbiColorOrdinal', [THEME.named.min, THEME.named.max]);
+    vega.scheme('pbiColorLinear', [THEME.named.min, THEME.named.max]);
+    vega.scheme('pbiColorDivergent', [THEME.named.min, THEME.named.middle, THEME.named.max]);
+  }
+
+  // ---------------------------------------------------------------------------------
+  // JSONC: strip // and /* */ comments outside strings, keeping line numbers intact.
+  // ---------------------------------------------------------------------------------
+  function stripComments(src) {
+    let out = '';
+    let i = 0;
+    let inStr = false;
+    while (i < src.length) {
+      const c = src[i];
+      const n = src[i + 1];
+      if (inStr) {
+        if (c === '\\') { out += c + (n === undefined ? '' : n); i += 2; continue; }
+        if (c === '"') inStr = false;
+        out += c; i++; continue;
+      }
+      if (c === '"') { inStr = true; out += c; i++; continue; }
+      if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (c === '/' && n === '*') {
+        const end = src.indexOf('*/', i + 2);
+        const stop = end < 0 ? src.length : end + 2;
+        out += src.slice(i, stop).replace(/[^\n]/g, ' ');
+        i = stop; continue;
+      }
+      out += c; i++;
+    }
+    return out;
+  }
+
+  function parseJson(text, label) {
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      const pos = /position (\d+)/.exec(e.message);
+      if (pos && !/line \d+/.test(e.message)) {
+        const before = text.slice(0, Number(pos[1])).split('\n');
+        throw new Error(label + ': ' + e.message + ' (line ' + before.length + ', col ' + (before[before.length - 1].length + 1) + ')');
+      }
+      throw new Error(label + ': ' + e.message);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Sample data -> rows shaped like Deneb's: ISO dates become Date objects (local
+  // midnight for date-only values), __selected__ defaults to "neutral".
+  // ---------------------------------------------------------------------------------
+  const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/;
+  function prepRows(rows) {
+    if (!Array.isArray(rows)) throw new Error('Sample data must be a JSON array of row objects.');
+    return rows.map((r) => {
+      const o = {};
+      for (const [k, v] of Object.entries(r)) {
+        if (typeof v === 'string' && ISO_DATE.test(v)) {
+          const [y, m, d] = v.split('-').map(Number);
+          o[k] = new Date(y, m - 1, d);
+        } else if (typeof v === 'string' && ISO_DATETIME.test(v)) {
+          o[k] = new Date(v);
+        } else {
+          o[k] = v;
+        }
+      }
+      if (!('__selected__' in o)) o.__selected__ = 'neutral';
+      return o;
+    });
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Field-name check: every "field"/groupby/fields entry and datum['X'] must exist in
+  // the sample data or be created in the spec (as / params).
+  // ---------------------------------------------------------------------------------
+  function collectNames(node, acc) {
+    if (Array.isArray(node)) { node.forEach((n) => collectNames(n, acc)); return; }
+    if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node)) {
+        if (k === 'as') [].concat(v).forEach((x) => typeof x === 'string' && acc.created.add(x));
+        if (k === 'name' && typeof v === 'string') acc.created.add(v);
+        if (k === 'field' && typeof v === 'string') acc.fields.add(v);
+        if ((k === 'groupby' || k === 'fields') && Array.isArray(v)) v.forEach((x) => typeof x === 'string' && acc.fields.add(x));
+        collectNames(v, acc);
+      }
+      return;
+    }
+    if (typeof node === 'string') {
+      for (const m of node.matchAll(/datum\[\s*(['"])(.+?)\1\s*\]/g)) acc.fields.add(m[2]);
+    }
+  }
+  function missingFields(spec, rows) {
+    const acc = { fields: new Set(), created: new Set() };
+    collectNames(spec, acc);
+    const dataKeys = new Set();
+    rows.forEach((r) => Object.keys(r).forEach((k) => dataKeys.add(k)));
+    return [...acc.fields]
+      .map((f) => f.replace(/\\(.)/g, '$1'))
+      .filter((f) => !dataKeys.has(f) && !acc.created.has(f));
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Logging
+  // ---------------------------------------------------------------------------------
+  function log(level, msg) {
+    const li = document.createElement('li');
+    li.className = level;
+    li.textContent = level.toUpperCase() + '  ' + msg;
+    $('log').appendChild(li);
+  }
+  function setStatus(text, ok) {
+    $('status').textContent = text;
+    $('status').className = ok ? 'ok' : 'err';
+  }
+  function makeLogger() {
+    let lvl = vega.Warn;
+    const fmt = (args) => args.map((a) => (a instanceof Error ? a.message : typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+    const l = {
+      level(v) { if (v === undefined) return lvl; lvl = v; return l; },
+      error(...a) { log('error', fmt(a)); return l; },
+      warn(...a) { if (lvl >= vega.Warn) log('warn', fmt(a)); return l; },
+      info(...a) { if (lvl >= vega.Info) log('info', fmt(a)); return l; },
+      debug() { return l; }
+    };
+    return l;
+  }
+
+  // ---------------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------------
+  let currentView = null;
+
+  async function render() {
+    $('log').textContent = '';
+    setStatus('Rendering...', true);
+    if (currentView) { currentView.finalize(); currentView = null; }
+    $('view').textContent = '';
+
+    const W = Math.max(50, Number($('w').value) || 944);
+    const H = Math.max(50, Number($('h').value) || 636);
+    $('frame').style.width = W + 'px';
+    $('frame').style.minHeight = H + 'px';
+    $('frame').dataset.size = W + ' x ' + H;
+
+    try {
+      const spec = parseJson(stripComments($('spec').value), 'Spec');
+      const rows = prepRows(parseJson($('data').value, 'Sample data'));
+
+      if (!spec.data || spec.data.name !== 'dataset') log('warn', 'Top-level "data" should be {"name": "dataset"} - that is the only data Deneb supplies.');
+      if (spec.$schema) log('warn', '"$schema" present - Deneb warns about this; remove it.');
+      missingFields(spec, rows).forEach((f) => log('warn', 'Field "' + f + '" is referenced in the spec but is not in the sample data or created by a transform/param.'));
+      if (rows.length > 500) log('info', rows.length + ' rows: above Deneb continuous-view default threshold (500) - view state resets on filter changes in Power BI.');
+
+      // Deneb sizes the view to the visual and enables Power BI custom format types.
+      if (spec.width === undefined) spec.width = W;
+      if (spec.height === undefined) spec.height = H;
+      if (spec.autosize === undefined) spec.autosize = { type: 'fit', contains: 'padding' };
+      spec.config = Object.assign({ customFormatTypes: true }, spec.config);
+
+      const logger = makeLogger();
+      const vgSpec = vegaLite.compile(spec, { logger }).spec;
+
+      const signals = vgSpec.signals || (vgSpec.signals = []);
+      const addSignal = (name, value) => { if (!signals.some((s) => s.name === name)) signals.push({ name, value }); };
+      addSignal('denebContainer', { width: W, height: H });
+      addSignal('pbiContainer', { width: W, height: H });
+      addSignal('pbiContainerWidth', W);
+      addSignal('pbiContainerHeight', H);
+
+      // Feed the rows as the "dataset" source, like Deneb does.
+      const source = (vgSpec.data || []).find((d) => d.name === 'dataset');
+      if (source) source.values = rows;
+
+      const result = await vegaEmbed('#view', vgSpec, {
+        mode: 'vega',
+        renderer: 'svg',
+        logLevel: vega.Warn,
+        logger,
+        actions: { export: true, source: false, compiled: true, editor: false }
+      });
+      currentView = result.view;
+
+      setStatus('Rendered ' + rows.length + ' rows with Vega ' + vega.version + ' / Vega-Lite ' + vegaLite.version + '.', true);
+    } catch (e) {
+      setStatus('Failed', false);
+      const msg = e && e.message ? e.message : String(e);
+      log('error', msg);
+      if (/reading 'type'/.test(msg)) log('info', 'Hint: a channel pair mixes "datum" and "field" (e.g. y: {datum: 0} with y2: {field: ...}). Calculate the constant as a field instead - see references/gotchas.md.');
+      console.error(e);
+    }
+  }
+
+  // ---------------------------------------------------------------------------------
+  // UI wiring
+  // ---------------------------------------------------------------------------------
+  function loadStored(id, fallback) {
+    try { return localStorage.getItem(STORE + id) || fallback; } catch (e) { return fallback; }
+  }
+  function store(id) {
+    try { localStorage.setItem(STORE + id, $(id).value); } catch (e) { /* storage unavailable on some file:// setups */ }
+  }
+  function readFileInto(input, target) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    file.text().then((t) => { $(target).value = t; store(target); render(); });
+  }
+
+  $('spec').value = loadStored('spec', DEFAULT_SPEC);
+  $('data').value = loadStored('data', DEFAULT_DATA);
+  $('w').value = loadStored('w', '944');
+  $('h').value = loadStored('h', '636');
+
+  ['spec', 'data', 'w', 'h'].forEach((id) => $(id).addEventListener('input', () => store(id)));
+  $('specFile').addEventListener('change', (e) => readFileInto(e.target, 'spec'));
+  $('dataFile').addEventListener('change', (e) => readFileInto(e.target, 'data'));
+  $('render').addEventListener('click', render);
+  $('showEditors').addEventListener('change', (e) => $('editors').classList.toggle('hidden', !e.target.checked));
+  document.addEventListener('keydown', (e) => { if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); render(); } });
+
+  if (!window.vega || !window.vegaLite || !window.vegaEmbed) {
+    setStatus('Could not load Vega from cdn.jsdelivr.net - check the network/proxy.', false);
+    return;
+  }
+  $('versions').textContent = 'Vega ' + vega.version + ' / Vega-Lite ' + vegaLite.version + ' / vega-embed ' + vegaEmbed.version;
+  registerStubs();
+  render();
+})();
+</script>
+</body>
+</html>
