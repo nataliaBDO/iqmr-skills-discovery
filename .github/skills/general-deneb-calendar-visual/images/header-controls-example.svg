@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="743" viewBox="0 0 1240 743" font-family="Trebuchet MS, Helvetica, Arial, sans-serif">
+  <title>Month calendar with header controls (illustration)</title>
+  <rect width="1240" height="743" fill="#FAFAFA"/>
+
+  <!-- Callouts -->
+  <g font-size="13" fill="#5B6E7F">
+    <text x="30" y="22" font-weight="700" fill="#404040">Month / List toggle</text>
+    <text x="30" y="40">Power BI shapes + buttons + bookmarks</text>
+    <text x="300" y="22" font-weight="700" fill="#404040">Month Selector slicer</text>
+    <text x="300" y="40">Power BI slicer, acts as the title</text>
+    <text x="520" y="22" font-weight="700" fill="#404040">Month name</text>
+    <text x="520" y="40">Deneb, shown when "Current Month"</text>
+    <text x="900" y="22" font-weight="700" fill="#404040">Key</text>
+    <text x="900" y="40">Deneb header row (pKeyItems)</text>
+  </g>
+  <g stroke="#B2B2B2" stroke-dasharray="3 3">
+    <line x1="116" y1="48" x2="116" y2="90"/>
+    <line x1="332" y1="48" x2="332" y2="90"/>
+    <line x1="530" y1="48" x2="530" y2="98"/>
+    <line x1="920" y1="48" x2="920" y2="90"/>
+  </g>
+
+  <g transform="translate(20,80)">
+    <!-- Deneb visual container (padding 0, border radius 8) -->
+    <rect x="0.5" y="0.5" width="1199" height="642" rx="8" fill="#FFFFFF" stroke="#E7E7E7"/>
+
+    <!-- Power BI: toggle frame, Month fill (round end + square side), button text -->
+    <rect x="12" y="12" width="168" height="36" rx="18" fill="#FFFFFF" stroke="#E7E7E7"/>
+    <rect x="12" y="12" width="84" height="36" rx="18" fill="#404040"/>
+    <rect x="74" y="12" width="22" height="36" fill="#404040"/>
+    <text x="54" y="30" font-size="16" font-weight="700" fill="#FFFFFF" text-anchor="middle" dominant-baseline="central">Month</text>
+    <text x="138" y="30" font-size="16" fill="#404040" text-anchor="middle" dominant-baseline="central">List</text>
+
+    <!-- Power BI: Month Selector slicer (dropdown) -->
+    <rect x="192.5" y="12.5" width="239" height="35" rx="8" fill="#FFFFFF" stroke="#E7E7E7"/>
+    <text x="204" y="30" font-size="16" fill="#333333" dominant-baseline="central">Current Month</text>
+    <path d="M408 27 l5 5 l5 -5" fill="none" stroke="#5B6E7F" stroke-width="1.5"/>
+
+    <!-- Deneb: month note -->
+    <text x="440" y="30" font-size="16" fill="#5B6E7F" dominant-baseline="central">November 2026</text>
+
+    <!-- Deneb: boxed key -->
+    <rect x="891.5" y="12.5" width="303" height="35" rx="8" fill="#FFFFFF" stroke="#E7E7E7"/>
+    <g font-size="16" dominant-baseline="central" fill="#333333">
+      <text x="903.6" y="30" font-weight="700" fill="#404040">Status</text>
+      <circle cx="983.6" cy="30" r="7" fill="#E81A3B"/><text x="996.6" y="30">Red</text>
+      <circle cx="1046" cy="30" r="7" fill="#FD7E14"/><text x="1059" y="30">Amber</text>
+      <circle cx="1126" cy="30" r="7" fill="#54A575"/><text x="1139" y="30">Green</text>
+    </g>
+
+    <!-- Weekday header -->
+    <g font-size="13.33" font-weight="700" fill="#5B6E7F" text-anchor="middle">
+      <text x="90" y="77">Sun</text><text x="260" y="77">Mon</text><text x="430" y="77">Tue</text>
+      <text x="600" y="77">Wed</text><text x="770" y="77">Thu</text><text x="940" y="77">Fri</text><text x="1110" y="77">Sat</text>
+    </g>
+
+    <!-- Grid: out-of-month fill, in-month cells, today, lines, border -->
+    <rect x="5" y="88" width="1190" height="550" fill="#F7F6F7"/>
+    <rect x="5" y="88" width="1190" height="440" fill="#FFFFFF"/>
+    <rect x="5" y="528" width="340" height="110" fill="#FFFFFF"/>
+    <rect x="855" y="88" width="170" height="110" fill="#E6F6FC"/>
+    <g stroke="#E7E7E7">
+      <line x1="175" y1="88" x2="175" y2="638"/><line x1="345" y1="88" x2="345" y2="638"/>
+      <line x1="515" y1="88" x2="515" y2="638"/><line x1="685" y1="88" x2="685" y2="638"/>
+      <line x1="855" y1="88" x2="855" y2="638"/><line x1="1025" y1="88" x2="1025" y2="638"/>
+      <line x1="5" y1="198" x2="1195" y2="198"/><line x1="5" y1="308" x2="1195" y2="308"/>
+      <line x1="5" y1="418" x2="1195" y2="418"/><line x1="5" y1="528" x2="1195" y2="528"/>
+    </g>
+    <rect x="5" y="88" width="1190" height="550" fill="none" stroke="#E7E7E7"/>
+
+    <!-- Day numbers -->
+    <g font-size="13.33" fill="#333333">
+      <text x="11" y="105">1</text><text x="181" y="105">2</text><text x="351" y="105">3</text><text x="521" y="105">4</text>
+      <text x="691" y="105">5</text><text x="861" y="105" fill="#1183B1" font-weight="700">6</text><text x="1031" y="105">7</text>
+      <text x="11" y="215">8</text><text x="181" y="215">9</text><text x="351" y="215">10</text><text x="521" y="215">11</text>
+      <text x="691" y="215">12</text><text x="861" y="215">13</text><text x="1031" y="215">14</text>
+      <text x="11" y="325">15</text><text x="181" y="325">16</text><text x="351" y="325">17</text><text x="521" y="325">18</text>
+      <text x="691" y="325">19</text><text x="861" y="325">20</text><text x="1031" y="325">21</text>
+      <text x="11" y="435">22</text><text x="181" y="435">23</text><text x="351" y="435">24</text><text x="521" y="435">25</text>
+      <text x="691" y="435">26</text><text x="861" y="435">27</text><text x="1031" y="435">28</text>
+      <text x="11" y="545">29</text><text x="181" y="545">30</text>
+    </g>
+
+    <!-- Item cards: plain card, status circle, label -->
+    <g font-size="13.33" fill="#333333" dominant-baseline="central">
+      <g fill="#FFFFFF" stroke="#E7E7E7">
+        <rect x="351.8" y="112.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="861.8" y="112.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="351.8" y="222.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="351.8" y="249.7" width="156.4" height="25.3" rx="3"/>
+        <rect x="691.8" y="222.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="691.8" y="249.7" width="156.4" height="25.3" rx="3"/>
+        <rect x="691.8" y="277.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="691.8" y="332.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="691.8" y="359.7" width="156.4" height="25.3" rx="3"/>
+        <rect x="351.8" y="442.2" width="156.4" height="25.3" rx="3"/>
+        <rect x="181.8" y="552.2" width="156.4" height="25.3" rx="3"/>
+      </g>
+      <circle cx="361.8" cy="124.85" r="4.7" fill="#54A575"/><text x="371.8" y="124.85">Quarterly planning</text>
+      <circle cx="871.8" cy="124.85" r="4.7" fill="#E81A3B"/><text x="881.8" y="124.85">Board pack due</text>
+      <circle cx="361.8" cy="234.85" r="4.7" fill="#54A575"/><text x="371.8" y="234.85">Ops review</text>
+      <circle cx="361.8" cy="262.35" r="4.7" fill="#FD7E14"/><text x="371.8" y="262.35">Release 4.2</text>
+      <circle cx="701.8" cy="234.85" r="4.7" fill="#E81A3B"/><text x="711.8" y="234.85">Budget submission</text>
+      <circle cx="701.8" cy="262.35" r="4.7" fill="#54A575"/><text x="711.8" y="262.35">Client workshop</text>
+      <circle cx="701.8" cy="289.85" r="4.7" fill="#FD7E14"/><text x="711.8" y="289.85">Data refresh cuto&#x2026;</text>
+      <circle cx="701.8" cy="344.85" r="4.7" fill="#E81A3B"/><text x="711.8" y="344.85">Audit fieldwork</text>
+      <circle cx="701.8" cy="372.35" r="4.7" fill="#54A575"/><text x="711.8" y="372.35">Audit fieldwork</text>
+      <circle cx="361.8" cy="454.85" r="4.7" fill="#FD7E14"/><text x="371.8" y="454.85">Year-end change fr&#x2026;</text>
+      <circle cx="191.8" cy="564.85" r="4.7" fill="#54A575"/><text x="201.8" y="564.85">Team offsite</text>
+    </g>
+
+    <!-- +N more -->
+    <text x="848.2" y="216" font-size="12" font-weight="700" fill="#1183B1" text-anchor="end">+2 more</text>
+  </g>
+</svg>

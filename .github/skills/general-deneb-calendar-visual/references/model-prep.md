@@ -7,7 +7,6 @@
 | Unique item ID | GUID / ID / number column | Without it, two items with the same label on the same day merge into one card. If no ID exists, an index column added in Power Query works. |
 | Item label | name / title column | Text on the card. |
 | Category (optional) | status / type / phase column | Card colour. One value per item. |
-| Flag (optional) | calculated column, 1/0 | See [Flag column](#flag-column). |
 | Calendar grid columns | `'Deneb Calendar'` table | [assets/calendar-table.dax](../assets/calendar-table.dax) |
 
 ## Reading field names
@@ -46,12 +45,6 @@ If the date column holds times (e.g. `05/11/2026 14:30`), it won't match the cal
 Item Date Only = DATE ( YEAR ( '<Item Table>'[<Item Date>] ), MONTH ( '<Item Table>'[<Item Date>] ), DAY ( '<Item Table>'[<Item Date>] ) )
 ```
 Point the calendar table's `MIN`/`MAX` at the same column.
-
-### Flag column
-```dax
-Item Flag = IF ( <condition>, 1, 0 )
-```
-Examples: `'Tasks'[Status] = "Overdue"`, `'Projects'[RAG] = "Red"`, `'Events'[Capacity] < 'Events'[Bookings]`. Set **Don't summarize**.
 
 ### Items that span several days
 The calendar places each item on **one** date. For a start/end range the model needs one row per item per day — a bridge table, e.g.:

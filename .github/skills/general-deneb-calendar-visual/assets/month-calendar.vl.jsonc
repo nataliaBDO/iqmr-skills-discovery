@@ -1,9 +1,15 @@
 // =====================================================================================
 // MONTH CALENDAR - Deneb (Vega-Lite) specification
 // =====================================================================================
-// Draws a Sun-Sat month grid and places one card per item on its date. Card colour =
-// item category (optional); a warning icon marks flagged items (optional). Days with
-// more items than fit show "+N more"; clicking a day opens a panel listing all items.
+// Draws a Sun-Sat month grid and places one plain card per item on its date. A small
+// circle on each card shows the item's RAG status - Red / Amber / Green (optional;
+// hollow = no status). Days with more items than fit show "+N more"; clicking a day
+// opens a panel listing all items.
+//
+// HEADER ROW (above the grid): month title on the left, a boxed key ("Status: Red Amber
+// Green") on the right. The left of the row can instead host Power BI controls laid
+// over the visual - a Month Selector slicer as the title and a Month / List toggle
+// (see pTitleMode / pControlsPx and references/powerbi-setup.md).
 //
 // The spec uses fixed ROLE names, not report field names. Rename each field in the
 // Deneb Values well ("Rename for this visual") to its role name and the spec works
@@ -22,8 +28,7 @@
 //   From the item table:
 //     Item Key         required-ish: unique ID, keeps two same-named items apart
 //     Item Label       required: text on the card
-//     Item Category    optional: drives card colour (see CATEGORY COLOURS)
-//     Item Flag        optional: 1 (or TRUE) shows the warning icon
+//     Item Category    optional: RAG status text Red / Amber / Green (see CATEGORY COLOURS)
 //   All numeric fields: "Don't summarize".
 //
 // -------------------------------------------------------------------------------------
@@ -37,6 +42,11 @@
 //      open when the visual's own click cross-filters the page).
 // 4. Add a single-select slicer on 'Deneb Calendar'[Month Selector] set to
 //    "Current Month". The grid always shows ONE month.
+// 5. Format the Deneb visual: General > Properties > Padding = 0 on all sides (the
+//    header row is positioned from the visual's top edge).
+// 6. Optional header controls (slicer as the title + Month / List toggle): set
+//    pTitleMode to "note" and pControlsPx to the controls' width, then follow
+//    references/powerbi-setup.md > "Header controls".
 //
 // -------------------------------------------------------------------------------------
 // INTERACTION
@@ -55,28 +65,36 @@
 // Each cell is a 1 x 1 box with top-left corner (Weekday Number, Week Row - 1).
 // Positions inside a cell are fractions of that box (see LAYOUT PARAMETERS).
 // Days outside the month have no rows, so they show config.view.fill.
+// The header row is drawn as marks above the grid (negative pixel offsets): its centre
+// line sits 58 px above the grid, which with "padding".top = 12 is 30 px below the
+// visual's top edge - the same line as 36 px-tall Power BI controls placed at top + 12.
 //
 // -------------------------------------------------------------------------------------
-// THEME TOKENS - replace each placeholder hex everywhere it appears with the user's
-// CVI colour. Every hex below is used for one role only, so find/replace is safe.
+// THEME TOKENS - BDO theme by default. To re-theme, replace each hex everywhere it
+// appears. Every hex below is used for one role only, so find/replace is safe.
 // -------------------------------------------------------------------------------------
-//   #FFFFFF  surface: day cells, day panel, legend background
-//   #F5F5F5  out-of-month cells
-//   #E1DFDD  lines: grid lines, outer border, legend border
-//   #EFF6FC  today's cell fill
-//   #0F6CBD  accent: today's day number, open-day outline, "+N more"
-//   #252423  strong text: title, card text, panel title, legend title
-//   #323130  body text: day numbers, legend labels
-//   #605E5C  muted text: weekday header
-//   #8A8886  panel border, "Click outside to close"
-//   #A19F9D  outline on cards with no category
-//   #D13438  flag icon
-//   Segoe UI font (config.font)
-//   Category colours: CATEGORY COLOURS in LAYER 3.
+//   #FFFFFF  surface: day cells, item cards, day panel, key box
+//   #F7F6F7  out-of-month cells (BDO light background)
+//   #E7E7E7  lines: grid lines, outer border, card border, key border
+//   #E6F6FC  today's cell fill (ocean tint)
+//   #1183B1  accent: today's day number, open-day outline, "+N more" (dark ocean;
+//            BDO red is kept for status only)
+//   #404040  titles: month title, panel title, key title (charcoal)
+//   #333333  body text: day numbers, card and panel labels, key labels
+//   #5B6E7F  secondary text: weekday header, month note (slate)
+//   #828282  panel border, "Click outside to close"
+//   #B2B2B2  "No status": hollow circle outline
+//   Trebuchet MS font (config.font); sizes = TYPE SCALE params.
+//   Status colours: CATEGORY COLOURS in LAYER 3 (+ pKeyItems for the key):
+//   Red #E81A3B, Amber #FD7E14, Green #54A575.
 // =====================================================================================
 {
   // Deneb always supplies the Power BI data under the name "dataset".
   "data": {"name": "dataset"},
+
+  // Top padding places the header row's centre 30 px below the visual's top edge
+  // (assumes the Deneb visual's own padding is 0).
+  "padding": {"top": 12, "left": 5, "right": 5, "bottom": 5},
 
   // -----------------------------------------------------------------------------------
   // LAYOUT PARAMETERS - (fraction) = share of one calendar cell's height.
@@ -92,14 +110,36 @@
     {"name": "pCardGap", "value": 0.02},
     // (fraction of cell width) Left/right inset of cards inside the cell.
     {"name": "pPadX", "value": 0.04},
-    // Opacity of the category colour used as the card background.
-    {"name": "pCardTint", "value": 0.2},
     // Day panel: height of one item row in pixels, and panel width in day columns.
     {"name": "pPanelRowPx", "value": 22},
     {"name": "pPanelCols", "value": 2.6},
     // Words used in the day panel title, e.g. "Tue 10 Nov · 2 items".
     {"name": "pItemNoun", "value": "item"},
     {"name": "pItemNounPlural", "value": "items"},
+
+    // --- HEADER ROW -------------------------------------------------------------------
+    // "full": month title (+ "· Current Month") drawn at the left of the header row.
+    // "note": a Month Selector slicer laid over the header is the title; the month name
+    //         is drawn next to it only when the slicer says "Current Month".
+    {"name": "pTitleMode", "value": "full"},
+    // px from the grid's left edge covered by Power BI controls laid over the header
+    // (slicer + toggle). The title / month note starts here. 0 = no controls.
+    {"name": "pControlsPx", "value": 0},
+    // KEY (boxed, top-right). pKeyItems = the CATEGORY COLOURS domain in the same order,
+    // without "No status".
+    {"name": "pKeyTitle", "value": "Status"},
+    {"name": "pKeyItems", "value": ["Red", "Amber", "Green"]},
+    // Average character width as a share of the font size - spaces the key entries.
+    // Raise it if key labels touch the next circle, lower it if gaps look too wide.
+    {"name": "pCharW", "value": 0.55},
+
+    // --- TYPE SCALE (pt -> px, 1 pt = 1.333 px) - one place for every font size -------
+    // 16 pt month title | 12 pt key + month note | 10 pt body | 9 pt supporting text.
+    {"name": "pFontTitle", "value": 21.33},
+    {"name": "pFontKey", "value": 16},
+    {"name": "pFontBody", "value": 13.33},
+    {"name": "pFontSmall", "value": 12},
+
     // Month shown in the grid (e.g. 202611): earliest Month Key in the data. Drives the title.
     {"name": "pShownMonth", "expr": "extent(pluck(data('dataset'), 'Month Key'))[0]"}
   ],
@@ -121,12 +161,10 @@
 
     // Empty days ("Show items with no data") have a blank Item Label.
     {"calculate": "isValid(datum['Item Label']) && datum['Item Label'] !== ''", "as": "hasItem"},
-    // Missing or blank Item Category => "No category" (must match the CATEGORY COLOURS domain).
+    // Missing or blank Item Category => "No status" (must match the CATEGORY COLOURS domain).
     {"calculate": "isValid(datum['Item Category']) && datum['Item Category'] !== ''", "as": "hasCategory"},
-    {"calculate": "datum.hasCategory ? datum['Item Category'] : 'No category'", "as": "categoryLabel"},
-    {"calculate": "datum['Item Flag'] === 1 || datum['Item Flag'] === true", "as": "isFlagged"},
+    {"calculate": "datum.hasCategory ? datum['Item Category'] : 'No status'", "as": "categoryLabel"},
     // Order of items within a day (cards, "+N more" and panel all use it).
-    // Flagged first instead: "(datum.isFlagged ? '0' : '1') + datum['Item Label']"
     {"calculate": "datum['Item Label']", "as": "sortKey"}
   ],
 
@@ -181,25 +219,25 @@
             },
             "y2": {"field": "cellBottom"},
             "fill": {
-              "condition": {"test": "datum['Is Today'] === 1", "value": "#EFF6FC"},
+              "condition": {"test": "datum['Is Today'] === 1", "value": "#E6F6FC"},
               "value": "#FFFFFF"
             },
             "stroke": {
-              "condition": {"param": "expandedDay", "empty": false, "value": "#0F6CBD"},
+              "condition": {"param": "expandedDay", "empty": false, "value": "#1183B1"},
               "value": "transparent"
             }
           }
         },
         {
           // Day number, top-left of the cell.
-          "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 6, "dy": 5, "fontSize": 13},
+          "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 6, "dy": 5, "fontSize": {"expr": "pFontBody"}},
           "encoding": {
             "x": {"field": "cellLeft", "type": "quantitative", "axis": null},
             "y": {"field": "cellTop", "type": "quantitative", "axis": null},
             "text": {"field": "Day of Month"},
             "color": {
-              "condition": {"test": "datum['Is Today'] === 1", "value": "#0F6CBD"},
-              "value": "#323130"
+              "condition": {"test": "datum['Is Today'] === 1", "value": "#1183B1"},
+              "value": "#333333"
             }
           }
         }
@@ -221,7 +259,7 @@
         // Constant as a field: Vega-Lite can't pair a "datum" start with a field end.
         {"calculate": "0", "as": "lineTop"}
       ],
-      "mark": {"type": "rule", "color": "#E1DFDD"},
+      "mark": {"type": "rule", "color": "#E7E7E7"},
       "encoding": {
         "x": {"field": "Weekday Number", "type": "quantitative", "axis": null},
         "y": {"field": "lineTop", "type": "quantitative", "axis": null},
@@ -237,12 +275,115 @@
         {"calculate": "0", "as": "lineLeft"},
         {"calculate": "7", "as": "lineRight"}
       ],
-      "mark": {"type": "rule", "color": "#E1DFDD"},
+      "mark": {"type": "rule", "color": "#E7E7E7"},
       "encoding": {
         "x": {"field": "lineLeft", "type": "quantitative", "axis": null},
         "x2": {"field": "lineRight"},
         "y": {"field": "lineY", "type": "quantitative", "axis": null}
       }
+    },
+
+    // =================================================================================
+    // HEADER ROW - month title (left) and boxed key (right), centred 58 px above the grid.
+    // Text widths can't be measured in Vega-Lite, so key entries are spaced from an
+    // estimated width (characters x pFontKey x pCharW). Positions are px from the grid's
+    // right edge, converted to grid units (7 columns).
+    // =================================================================================
+    {
+      "transform": [
+        {"aggregate": [{"op": "count", "as": "rowsInMonth"}]},
+        {"calculate": "0", "as": "headerY"}
+      ],
+      "layer": [
+        {
+          // "full": month title. "note": month name only when the slicer says "Current Month".
+          "transform": [
+            {"calculate": "isValid(pShownMonth) && pShownMonth === year(now()) * 100 + month(now()) + 1", "as": "isCurrentMonth"},
+            {"filter": "isValid(pShownMonth) && (pTitleMode === 'full' || datum.isCurrentMonth)"},
+            {"calculate": "timeFormat(datetime(floor(pShownMonth / 100), pShownMonth % 100 - 1, 1), '%B %Y')", "as": "monthName"},
+            {"calculate": "pTitleMode === 'full' && datum.isCurrentMonth ? datum.monthName + '  \u00B7  Current Month' : datum.monthName", "as": "titleText"},
+            {"calculate": "pControlsPx * 7 / width", "as": "titleX"}
+          ],
+          "mark": {
+            "type": "text",
+            "align": "left",
+            "baseline": "middle",
+            "dy": -58,
+            "fontSize": {"expr": "pTitleMode === 'full' ? pFontTitle : pFontKey"},
+            "fontWeight": {"expr": "pTitleMode === 'full' ? 700 : 400"},
+            "color": {"expr": "pTitleMode === 'full' ? '#404040' : '#5B6E7F'"}
+          },
+          "encoding": {
+            "x": {"field": "titleX", "type": "quantitative", "axis": null},
+            "y": {"field": "headerY", "type": "quantitative", "axis": null},
+            "text": {"field": "titleText"}
+          }
+        },
+        {
+          // KEY: entry 0 = pKeyTitle, then one circle per pKeyItems value.
+          "transform": [
+            {"calculate": "sequence(0, length(pKeyItems) + 1)", "as": "keyIndex"},
+            {"flatten": ["keyIndex"]},
+            {"calculate": "datum.keyIndex === 0 ? 'title' : 'dot'", "as": "keyKind"},
+            {"calculate": "datum.keyKind === 'title' ? pKeyTitle : pKeyItems[datum.keyIndex - 1]", "as": "keyLabel"},
+            // Entry width in px: marker (14) + gap (6) + estimated text width; bold title ~8% wider.
+            {"calculate": "length(datum.keyLabel) * pFontKey * pCharW * (datum.keyKind === 'title' ? 1.08 : 1) + (datum.keyKind === 'title' ? 0 : 20)", "as": "keyW"},
+            {"calculate": "datum.keyW + 16", "as": "keyStep"},
+            {
+              "window": [{"op": "sum", "field": "keyStep", "as": "keyCum"}],
+              "sort": [{"field": "keyIndex", "order": "descending"}]
+            },
+            // Left edge of the entry, in px from the grid's right edge (12 px box padding).
+            {"calculate": "12 + datum.keyCum - 16", "as": "keyLeftPx"},
+            {"calculate": "7 - (datum.keyKind === 'title' ? datum.keyLeftPx : datum.keyLeftPx - 20) * 7 / width", "as": "labelX"},
+            {"calculate": "7 - (datum.keyLeftPx - 7) * 7 / width", "as": "markerX"},
+            {"calculate": "7 - (datum.keyLeftPx + 12) * 7 / width", "as": "boxLeft"},
+            {"calculate": "7", "as": "boxRight"},
+            // Same field as the cards, so the dots reuse the CATEGORY COLOURS scale.
+            {"calculate": "datum.keyLabel", "as": "categoryLabel"}
+          ],
+          "layer": [
+            {
+              // Key box: drawn once, from the left-most entry (the title).
+              "transform": [{"filter": "datum.keyKind === 'title'"}],
+              "mark": {"type": "rect", "fill": "#FFFFFF", "stroke": "#E7E7E7", "strokeWidth": 1, "cornerRadius": 8, "yOffset": -76, "y2Offset": -40},
+              "encoding": {
+                "x": {"field": "boxLeft", "type": "quantitative", "axis": null},
+                "x2": {"field": "boxRight"},
+                "y": {"field": "headerY", "type": "quantitative", "axis": null},
+                "y2": {"field": "headerY"}
+              }
+            },
+            {
+              "transform": [{"filter": "datum.keyKind === 'dot'"}],
+              "mark": {"type": "point", "shape": "circle", "filled": true, "size": 160, "opacity": 1, "yOffset": -58},
+              "encoding": {
+                "x": {"field": "markerX", "type": "quantitative", "axis": null},
+                "y": {"field": "headerY", "type": "quantitative", "axis": null},
+                "color": {"field": "categoryLabel", "type": "nominal"}
+              }
+            },
+            {
+              "transform": [{"filter": "datum.keyKind === 'title'"}],
+              "mark": {"type": "text", "align": "left", "baseline": "middle", "dy": -58, "fontSize": {"expr": "pFontKey"}, "fontWeight": 700, "color": "#404040"},
+              "encoding": {
+                "x": {"field": "labelX", "type": "quantitative", "axis": null},
+                "y": {"field": "headerY", "type": "quantitative", "axis": null},
+                "text": {"field": "keyLabel"}
+              }
+            },
+            {
+              "transform": [{"filter": "datum.keyKind !== 'title'"}],
+              "mark": {"type": "text", "align": "left", "baseline": "middle", "dy": -58, "fontSize": {"expr": "pFontKey"}, "color": "#333333"},
+              "encoding": {
+                "x": {"field": "labelX", "type": "quantitative", "axis": null},
+                "y": {"field": "headerY", "type": "quantitative", "axis": null},
+                "text": {"field": "keyLabel"}
+              }
+            }
+          ]
+        }
+      ]
     },
 
     // =================================================================================
@@ -256,7 +397,7 @@
         {"calculate": "0", "as": "headerY"},
         {"calculate": "['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][datum['Weekday Number']]", "as": "weekdayName"}
       ],
-      "mark": {"type": "text", "align": "center", "baseline": "bottom", "dy": -8, "fontSize": 13, "fontWeight": 600, "color": "#605E5C"},
+      "mark": {"type": "text", "align": "center", "baseline": "bottom", "dy": -8, "fontSize": {"expr": "pFontBody"}, "fontWeight": 700, "color": "#5B6E7F"},
       "encoding": {
         "x": {"field": "headerX", "type": "quantitative", "axis": null},
         "y": {"field": "headerY", "type": "quantitative", "axis": null},
@@ -266,7 +407,7 @@
 
     // =================================================================================
     // LAYER 3 - ITEM CARDS
-    // Up to pMaxCards cards per day: category-tinted background + label + flag icon.
+    // Up to pMaxCards cards per day: plain card + status circle + label.
     // =================================================================================
     {
       "transform": [
@@ -301,39 +442,43 @@
         // fields here. Keep in sync with the tooltip in LAYER 5.
         "tooltip": [
           {"field": "Item Label", "title": "Item"},
-          {"field": "categoryLabel", "title": "Category"},
+          {"field": "categoryLabel", "title": "Status"},
           {"field": "Date", "type": "temporal", "title": "Date", "format": "%d %b %Y"}
         ]
       },
 
       "layer": [
         {
-          // Card background, tinted with the category colour.
-          "mark": {"type": "rect", "cornerRadius": 3, "strokeWidth": 1, "fillOpacity": {"expr": "pCardTint"}},
+          // Plain card.
+          "mark": {"type": "rect", "cornerRadius": 3, "fill": "#FFFFFF", "stroke": "#E7E7E7", "strokeWidth": 1},
           "encoding": {
             "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
             "x2": {"field": "cardRight"},
             "y": {"field": "cardTop", "type": "quantitative", "axis": null},
-            "y2": {"field": "cardBottom"},
-            // CATEGORY COLOURS - the only place category colours are defined; LAYER 5
-            // reuses this scale. List every Item Category value exactly as it appears in
-            // the data, plus "No category", with one CVI colour each (same order).
-            // Values missing from the domain get recycled colours.
-            // The panel dots (LAYER 5) use the same field and title, so the two merge into
-            // one legend - never put "legend": null on either.
+            "y2": {"field": "cardBottom"}
+          }
+        },
+        {
+          // Status circle. "No status" = hollow circle (fill hidden, outline shown).
+          "mark": {"type": "point", "shape": "circle", "filled": true, "size": 70, "xOffset": 10, "stroke": "#B2B2B2"},
+          "encoding": {
+            "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
+            "y": {"field": "cardMid", "type": "quantitative", "axis": null},
+            // CATEGORY COLOURS - the only place status colours are defined; the key
+            // (HEADER ROW) and the panel circles (LAYER 5) reuse this scale. List every
+            // Item Category value exactly as it appears in the data, plus "No status",
+            // with one colour each (same order). Values missing from the domain get
+            // recycled colours. Keep pKeyItems in the same order (without "No status").
             "color": {
               "field": "categoryLabel",
               "type": "nominal",
-              "title": "Category",
               "scale": {
-                "domain": ["Meeting", "Deadline", "Release", "Training", "No category"],
-                "range": ["#4C6A92", "#D9822B", "#5B8C5A", "#8E6C8A", "#C8C6C4"]
+                "domain": ["Red", "Amber", "Green", "No status"],
+                "range": ["#E81A3B", "#FD7E14", "#54A575", "#B2B2B2"]
               }
             },
-            "stroke": {
-              "condition": {"test": "!datum.hasCategory", "value": "#A19F9D"},
-              "value": "transparent"
-            }
+            "fillOpacity": {"condition": {"test": "!datum.hasCategory", "value": 0}, "value": 1},
+            "strokeWidth": {"condition": {"test": "!datum.hasCategory", "value": 1.5}, "value": 0}
           }
         },
         {
@@ -342,25 +487,15 @@
             "type": "text",
             "align": "left",
             "baseline": "middle",
-            "dx": 6,
-            "fontSize": 12,
-            "fontWeight": 600,
-            "color": "#252423",
-            "limit": {"expr": "max(width / 7 - 30, 20)"}
+            "dx": 20,
+            "fontSize": {"expr": "pFontBody"},
+            "color": "#333333",
+            "limit": {"expr": "max(width / 7 - 46, 20)"}
           },
           "encoding": {
             "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
             "y": {"field": "cardMid", "type": "quantitative", "axis": null},
             "text": {"field": "Item Label"}
-          }
-        },
-        {
-          // Flag icon at the right of the card.
-          "transform": [{"filter": "datum.isFlagged"}],
-          "mark": {"type": "text", "text": "\u26A0", "align": "right", "baseline": "middle", "dx": -4, "fontSize": 12, "color": "#D13438"},
-          "encoding": {
-            "x": {"field": "cardRight", "type": "quantitative", "axis": null},
-            "y": {"field": "cardMid", "type": "quantitative", "axis": null}
           }
         }
       ]
@@ -399,9 +534,9 @@
         "align": "right",
         "baseline": "top",
         "dy": 6,
-        "fontSize": 12,
-        "fontWeight": 600,
-        "color": "#0F6CBD",
+        "fontSize": {"expr": "pFontSmall"},
+        "fontWeight": 700,
+        "color": "#1183B1",
         "cursor": "pointer"
       },
       "encoding": {
@@ -450,7 +585,7 @@
           "transform": [{"filter": "datum.panelRow === 1"}],
           "layer": [
             {
-              "mark": {"type": "rect", "fill": "#FFFFFF", "stroke": "#8A8886", "strokeWidth": 1, "cornerRadius": 4},
+              "mark": {"type": "rect", "fill": "#FFFFFF", "stroke": "#828282", "strokeWidth": 1, "cornerRadius": 4},
               "encoding": {
                 "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
                 "x2": {"field": "panelRight"},
@@ -459,7 +594,7 @@
               }
             },
             {
-              "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 10, "dy": 7, "fontSize": 13, "fontWeight": 700, "color": "#252423"},
+              "mark": {"type": "text", "align": "left", "baseline": "top", "dx": 10, "dy": 7, "fontSize": {"expr": "pFontBody"}, "fontWeight": 700, "color": "#404040"},
               "encoding": {
                 "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
                 "y": {"field": "panelTop", "type": "quantitative", "axis": null},
@@ -474,9 +609,9 @@
                 "baseline": "bottom",
                 "dx": 10,
                 "dy": -6,
-                "fontSize": 10,
+                "fontSize": {"expr": "pFontSmall"},
                 "fontStyle": "italic",
-                "color": "#8A8886"
+                "color": "#828282"
               },
               "encoding": {
                 "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
@@ -486,22 +621,24 @@
           ]
         },
         {
-          // One row per item: category dot, label, flag icon.
+          // One row per item: status circle and label.
           "encoding": {
             // TOOLTIP - keep in sync with LAYER 3.
             "tooltip": [
               {"field": "Item Label", "title": "Item"},
-              {"field": "categoryLabel", "title": "Category"},
+              {"field": "categoryLabel", "title": "Status"},
               {"field": "Date", "type": "temporal", "title": "Date", "format": "%d %b %Y"}
             ]
           },
           "layer": [
             {
-              "mark": {"type": "point", "filled": true, "size": 40, "xOffset": 16},
+              "mark": {"type": "point", "shape": "circle", "filled": true, "size": 50, "xOffset": 16, "stroke": "#B2B2B2"},
               "encoding": {
                 "x": {"field": "panelLeft", "type": "quantitative", "axis": null},
                 "y": {"field": "rowY", "type": "quantitative", "axis": null},
-                "color": {"field": "categoryLabel", "type": "nominal", "title": "Category"}
+                "color": {"field": "categoryLabel", "type": "nominal"},
+                "fillOpacity": {"condition": {"test": "!datum.hasCategory", "value": 0}, "value": 1},
+                "strokeWidth": {"condition": {"test": "!datum.hasCategory", "value": 1.5}, "value": 0}
               }
             },
             {
@@ -510,8 +647,8 @@
                 "align": "left",
                 "baseline": "middle",
                 "dx": 27,
-                "fontSize": 12,
-                "color": "#252423",
+                "fontSize": {"expr": "pFontBody"},
+                "color": "#333333",
                 "limit": {"expr": "max(pPanelCols * width / 7 - 56, 40)"}
               },
               "encoding": {
@@ -519,80 +656,21 @@
                 "y": {"field": "rowY", "type": "quantitative", "axis": null},
                 "text": {"field": "Item Label"}
               }
-            },
-            {
-              "transform": [{"filter": "datum.isFlagged"}],
-              "mark": {"type": "text", "text": "\u26A0", "align": "right", "baseline": "middle", "dx": -10, "fontSize": 12, "color": "#D13438"},
-              "encoding": {
-                "x": {"field": "panelRight", "type": "quantitative", "axis": null},
-                "y": {"field": "rowY", "type": "quantitative", "axis": null}
-              }
             }
           ]
         }
       ]
-    },
-
-    // =================================================================================
-    // LAYER 6 - FLAG LEGEND ENTRY (draws nothing on the grid)
-    // Adds a separate legend entry explaining the warning icon. Delete this layer if
-    // the report has no Item Flag. Rename "Flagged" to the report's wording.
-    // =================================================================================
-    {
-      "transform": [{"filter": "false"}, {"calculate": "'Flagged'", "as": "flagKey"}],
-      "mark": {"type": "point", "filled": true},
-      "encoding": {
-        "x": {"field": "cardLeft", "type": "quantitative", "axis": null},
-        "y": {"field": "cardMid", "type": "quantitative", "axis": null},
-        "shape": {
-          "field": "flagKey",
-          "type": "nominal",
-          "title": null,
-          "scale": {"domain": ["Flagged"], "range": ["triangle-up"]},
-          "legend": {"symbolFillColor": "#D13438", "symbolStrokeColor": "#D13438"}
-        }
-      }
     }
   ],
 
-  // Month title, e.g. "November 2026 · Current Month".
-  "title": {
-    "text": {
-      "expr": "isValid(pShownMonth) ? timeFormat(datetime(floor(pShownMonth / 100), pShownMonth % 100 - 1, 1), '%B %Y') + (pShownMonth === year(now()) * 100 + month(now()) + 1 ? '  \u00B7  Current Month' : '') : ''"
-    },
-    "orient": "top",
-    "anchor": "start",
-    "fontSize": 22,
-    "fontWeight": 700,
-    "color": "#252423",
-    "offset": 10
-  },
-
   // -----------------------------------------------------------------------------------
-  // THEME - colours are placeholders; see THEME TOKENS in the header.
+  // THEME - BDO theme; see THEME TOKENS in the header.
   // -----------------------------------------------------------------------------------
   "config": {
-    "font": "Segoe UI",
+    "font": "Trebuchet MS",
     // fill = out-of-month cells; stroke = outer border of the grid.
-    "view": {"fill": "#F5F5F5", "stroke": "#E1DFDD"},
-    "legend": {
-      "orient": "right",
-      "direction": "vertical",
-      "offset": 14,
-      "padding": 10,
-      "cornerRadius": 4,
-      "strokeColor": "#E1DFDD",
-      "fillColor": "#FFFFFF",
-      "titleFontSize": 12,
-      "titleColor": "#252423",
-      "titlePadding": 8,
-      "labelFontSize": 12,
-      "labelColor": "#323130",
-      "rowPadding": 6,
-      "symbolType": "circle",
-      "symbolSize": 120,
-      "symbolOpacity": 1,
-      "symbolStrokeWidth": 0
-    }
+    "view": {"fill": "#F7F6F7", "stroke": "#E7E7E7"},
+    // The key is drawn in the HEADER ROW layer, so the built-in legend is off.
+    "legend": {"disable": true}
   }
 }

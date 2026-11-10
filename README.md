@@ -5,7 +5,7 @@ Copilot agent skills for VS Code, shared for reuse.
 ## Skills
 | Skill | What it does |
 |---|---|
-| [general-deneb-calendar-visual](.github/skills/general-deneb-calendar-visual/) | Builds a Deneb (Vega-Lite) month calendar for any Power BI report: dated items on a Sun–Sat grid with category colours, an optional flag icon, "+N more" overflow and a click-to-open day panel. Includes the DAX calendar table, a browser preview and Power BI Desktop setup steps. |
+| [general-deneb-calendar-visual](.github/skills/general-deneb-calendar-visual/) | Builds a Deneb (Vega-Lite) month calendar for any Power BI report: dated items on a Sun–Sat grid as plain cards with RAG status circles, a boxed Status key, BDO theme colours, a type scale, "+N more" overflow and a click-to-open day panel, plus an optional Month / List toggle. Includes the DAX calendar table, a browser preview and Power BI Desktop setup steps. |
 
 ## Use a skill
 - **In this repo:** open the folder in VS Code. Skills under `.github/skills/` are picked up automatically.

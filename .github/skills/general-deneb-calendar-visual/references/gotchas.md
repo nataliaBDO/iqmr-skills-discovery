@@ -25,11 +25,11 @@ Check in this order (Deneb debug pane → **Source**, Ctrl+Alt+6):
 ### Measures in the Values well
 - **Symptom:** every item appears on every day, or the row count explodes.
 - **Cause:** a measure in the well is evaluated for every Date × item combination; if it returns a value (e.g. `0` or `"No"`) instead of `BLANK()`, Power BI keeps every combination.
-- **Fix:** use calculated **columns** for `Item Flag` and tooltip extras. If a measure is unavoidable, make it return `BLANK()` when there's no item.
+- **Fix:** use calculated **columns** for tooltip extras. If a measure is unavoidable, make it return `BLANK()` when there's no item.
 
 ### Identical rows merge
 - Power BI groups by all non-aggregated fields: two items with the same label, category and date become one card. Always add `Item Key`.
-- Numeric columns default to **Sum** → set **Don't summarize** for every calendar column, `Item Flag` and numeric keys. A summed `Week Row` puts cards in the wrong row.
+- Numeric columns default to **Sum** → set **Don't summarize** for every calendar column and numeric keys. A summed `Week Row` puts cards in the wrong row.
 
 ### Field with several values per item
 - **Symptom:** the same item shows twice on a day.
@@ -47,17 +47,25 @@ Check in this order (Deneb debug pane → **Source**, Ctrl+Alt+6):
 ## Spec
 
 ### Wrong or missing field names
-- **Symptom:** a layer draws nothing, a tooltip row is empty, every card is "No category" — no error.
+- **Symptom:** a layer draws nothing, a tooltip row is empty, every card is "No status" — no error.
 - **Cause:** a name in the spec doesn't exactly match the dataset; Vega-Lite treats a missing field as `undefined` silently.
 - **Fix:** check the role names in the Values well (case and spaces: `Item Label`, not `Item label`). The dataset uses the name shown in the well. Confirm in debug pane → **Source**.
 
 ### Category colours wrong or shifting
 - **Cause:** a category value in the data isn't in the `CATEGORY COLOURS` domain (spelling, case, trailing space), so it gets a recycled colour.
-- **Fix:** rerun `EVALUATE DISTINCT(...)` and copy the values exactly ([customise.md](./customise.md#category-colours)).
+- **Fix:** rerun `EVALUATE DISTINCT(...)` and copy the values exactly ([customise.md](./customise.md#status-colours-rag)).
 
-### Legend disappeared
-- **Cause:** `"legend": null` on the card colour or the panel dot colour. They share the field `categoryLabel` and title, so Vega-Lite merges them; `null` on either hides both.
-- **Fix:** never put `legend: null` on those two. To hide the category legend completely, set `"legend": null` on **both**, or use `config.legend.disable: true` (also hides the flag legend).
+### Key shows the wrong categories or colours
+- **Cause:** the key is drawn from the `pKeyItems` param, not from the data, and coloured through the shared `categoryLabel` scale. If `pKeyItems` and the `CATEGORY COLOURS` domain differ, the key lists categories that never appear, misses some, or a key value not in the domain gets a recycled colour.
+- **Fix:** keep `pKeyItems` = the domain without `"No status"`, same spelling and order. Don't re-enable the built-in legend (`config.legend.disable`) — it would draw a second key.
+
+### Key entries overlap or are spaced unevenly
+- **Cause:** Vega-Lite can't measure text; entry widths are estimated as characters × `pFontKey` × `pCharW`. Fonts narrower or wider than Trebuchet MS / Segoe UI throw the estimate off.
+- **Fix:** raise `pCharW` (e.g. 0.6) if labels touch the next circle; lower it (e.g. 0.5) if gaps are too wide.
+
+### Header row sits too low or is clipped
+- **Cause:** the Deneb visual's own padding (Format → General → Properties) adds space around the spec, so the header row no longer lines up with controls laid over it; or the spec's top padding was reduced.
+- **Fix:** set the visual's padding to 0 on all sides; keep the spec's `"padding": {"top": 12, ...}`.
 
 ### Axis missing in a layered chart
 - **Symptom:** an axis (e.g. a weekday header) set on one layer doesn't show.
@@ -70,12 +78,12 @@ Check in this order (Deneb debug pane → **Source**, Ctrl+Alt+6):
 - **Fix:** turn the constant into a field: `{"calculate": "0", "as": "lineTop"}` and use `"field"` on both channels.
 
 ### Shared scales
-- Layers that encode the same field on the same channel share one scale. Define `domain`/`range` once (the card rect); leave the panel dot bare.
-- *Infinite extent for field "..."* warnings come from layers that are empty for the current state (closed day panel, the flag legend layer). Harmless.
+- Layers that encode the same field on the same channel share one scale. Define `domain`/`range` once (the card circle in LAYER 3); leave the panel circle and key circles bare.
+- *Infinite extent for field "..."* warnings come from layers that are empty for the current state (closed day panel). Harmless.
 
 ### JSONC
 - Deneb 2.x accepts `//` comments; keep them. No trailing commas. No `"$schema"` (a certified visual can't fetch URLs; Deneb offers a Quick Fix).
-- Use `\u` escapes for symbols (`"\u26A0"` = ⚠, `"\u00B7"` = ·).
+- Use `\u` escapes for symbols (`"\u00B7"` = ·).
 - Don't create params named `width`/`height`; use `denebContainer.*`, not the deprecated `pbiContainer*`.
 
 ### Dates
@@ -92,11 +100,40 @@ Check in this order (Deneb debug pane → **Source**, Ctrl+Alt+6):
 ### No local Vega-Lite compiler
 - Validate with [assets/preview.html](../assets/preview.html) in a browser (needs cdn.jsdelivr.net, no install), then in Desktop.
 
+## Header controls
+Applies when the slicer and Month / List toggle are laid over the calendar header ([powerbi-setup.md](./powerbi-setup.md#header-controls-optional)).
+
+### Shapes show a red (or other) fill
+- **Cause:** a shape's **Fill** colour defaults to the theme's first data colour, even when Fill is switched off — and it reappears if someone toggles Fill on.
+- **Fix:** set the Fill colour explicitly (to the surface colour) and switch it off; colour shapes with **Effects → Background** only where colour is meant to show.
+
+### Button text clipped or off-centre
+- **Cause:** the button's default padding squeezes the text in a 36 px tall button.
+- **Fix:** set button **padding to 0** (all states), text 12 pt, vertical alignment middle.
+
+### Slicer shows two borders
+- **Cause:** the dropdown's own Values border is drawn inside the visual border.
+- **Fix:** **Values → Border = None**; keep only the visual border (radius 8).
+
+### Toggle fill has gaps or a rounded middle edge
+- **Cause:** the selected half is a single rounded shape, so its inner edge is rounded too, or it's a few px off the frame.
+- **Fix:** use a rounded shape plus a square shape covering the middle side (see the table in powerbi-setup.md), all on whole-pixel positions, same height as the frame.
+
+### Controls move by 1 px after each save
+- **Cause:** grouped objects in a group with fractional width/height are rescaled on save.
+- **Fix:** keep group positions and sizes whole numbers, or don't group the controls.
+
+### Bookmark resets the month or filters
+- **Cause:** the bookmark captured **Data**.
+- **Fix:** untick Data, keep Display, and use **Selected visuals** with only the toggled objects selected (calendar, table, buttons, fills) — never the slicer.
+
 ## Pre-flight checklist
 Run before handing the spec to the user:
-- [ ] Theme tokens replaced with the user's CVI (or the user agreed to keep the placeholder).
-- [ ] `CATEGORY COLOURS` domain matches the real category values exactly, ends with `"No category"`, one colour per value.
-- [ ] LAYER 6 deleted if there's no `Item Flag`; "Flagged" renamed otherwise.
+- [ ] Theme: BDO default kept, or every theme hex replaced with the user's CVI.
+- [ ] `CATEGORY COLOURS` domain matches the real status values exactly (e.g. Red / Amber / Green), ends with `"No status"`, one colour per value.
+- [ ] `pKeyItems` = the domain values without `"No status"`; `pKeyTitle` set.
+- [ ] Type scale params match the CVI; no fixed `fontSize` numbers added to marks.
+- [ ] With header controls: `pTitleMode` = `"note"`, `pControlsPx` matches the slicer's right edge; Deneb visual padding 0.
 - [ ] Tooltip arrays in LAYER 3 and LAYER 5 identical; extra fields exist in the well.
 - [ ] Every `"field"` / `datum['...']` name is a role name, a calendar column, or created by a transform.
 - [ ] Renders in preview.html with the sample data: zero errors; only the expected warnings.
